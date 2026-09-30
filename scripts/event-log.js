@@ -8,9 +8,14 @@
  */
 
 import {
-  getSetting, isRecording, postGmLog, describeTargets, targetLabel, targetUsers, playerUsers
+  getSetting, isRecording, postGmLog, describeTargets, targetLabel, targetUsers, playerUsers, displayName
 } from "./common.js";
-import { snapshotJournal, pageVisibilityMap } from "./journal-snapshot.js";
+import { snapshotJournal, pageVisibilityMap, effectiveLevel } from "./journal-snapshot.js";
+
+/** "백룡 / 1쪽". 저널과 페이지 이름이 같으면 한 번만: "백룡" */
+function journalTitle(entryName, pageName) {
+  return !pageName || pageName === entryName ? entryName : `${entryName} / ${pageName}`;
+}
 
 function shouldLog(settingKey) {
   if (!game.user.isGM) return false;
@@ -105,7 +110,7 @@ function wrapJournalShow() {
       // v0.1.0 테스트: Show Players는 권한이 없어도(강제 옵션 없이도) 플레이어에게 보여준다.
       // 그래서 권한으로 페이지를 거르지 않는다. 공개 안 된 비밀 블록은 여전히 뺀다.
       const snap = snapshotJournal(doc, targetUsers(targets), { filterByPermission: false });
-      const title = snap.pageName ? `${snap.entryName} / ${snap.pageName}` : snap.entryName;
+      const title = snap.pageName ? journalTitle(snap.entryName, snap.pageName) : snap.entryName;
       return postGmLog(`저널 공유 → ${targetLabel(targets)}: ${title}`, {
         kind: "event",
         type: "journal-show",
@@ -130,12 +135,30 @@ function touchesOwnership(changes) {
   return Object.keys(changes ?? {}).some(k => k === "ownership" || k.startsWith("ownership."));
 }
 
-function beforeOwnershipChange(doc, changes, userId) {
+/**
+ * 저장 전: 볼 수 있던 사람을 적어 둔다.
+ * 감지 경로가 둘(저장 단계 감싸기 + Hook)이라 먼저 온 쪽만 적는다(5초 안의 같은 문서는 건너뜀).
+ */
+function beforeOwnershipChange(doc, changes, userId, via) {
   if (userId !== game.user.id || !touchesOwnership(changes)) return;
   if (!shouldLog("logJournalPerm")) return;
   const entry = doc.documentName === "JournalEntryPage" ? doc.parent : doc;
   if (!entry) return;
-  beforeVisibility.set(doc.uuid, pageVisibilityMap(entry, playerUsers()));
+  const prev = beforeVisibility.get(doc.uuid);
+  if (prev && Date.now() - prev.at < 5000) return;
+  beforeVisibility.set(doc.uuid, { at: Date.now(), map: pageVisibilityMap(entry, playerUsers()) });
+  console.info(`gm-session-log | 권한 변경 감지(저장 전, ${via}): ${doc.name}`);
+}
+
+const LEVEL_NAME = { 1: "제한", 2: "관찰자", 3: "소유자" };
+
+/** "관찰자" 처럼 새로 볼 수 있게 된 사람들의 권한 단계 이름 */
+function levelLabel(doc, userIds) {
+  const names = new Set(userIds.map(id => {
+    const u = game.users.get(id);
+    return u ? LEVEL_NAME[effectiveLevel(doc, u)] : null;
+  }).filter(Boolean));
+  return names.size ? [...names].join("/") : "관찰자";
 }
 
 /**
@@ -153,7 +176,7 @@ function wrapJournalOwnership() {
     const pre = cls.prototype._preUpdate;
     cls.prototype._preUpdate = function (changed, options, user) {
       try {
-        beforeOwnershipChange(this, changed, user?.id ?? user);
+        beforeOwnershipChange(this, changed, user?.id ?? user, "저장 단계");
       } catch (err) {
         console.error("gm-session-log | 권한 변경 준비 실패", err);
       }
@@ -166,14 +189,29 @@ function wrapJournalOwnership() {
       return result;
     };
   }
+  // 두 번째 경로: Hook. 저장 단계 감싸기가 어떤 이유로 불리지 않는 경우를 대비한다(v0.1.1 테스트: 저널 전체 권한 변경 누락).
+  // pre... Hook에서 false를 돌려주면 저장이 취소되므로, 아래 함수는 항상 아무것도 돌려주지 않는다.
+  const preHook = (doc, changes, options, userId) => {
+    try {
+      beforeOwnershipChange(doc, changes, userId, "Hook");
+    } catch (err) {
+      console.error("gm-session-log | 권한 변경 준비 실패", err);
+    }
+  };
+  Hooks.on("preUpdateJournalEntry", preHook);
+  Hooks.on("preUpdateJournalEntryPage", preHook);
+  Hooks.on("updateJournalEntry", onUpdateJournal);
+  Hooks.on("updateJournalEntryPage", onUpdateJournal);
   console.info("gm-session-log | 저널 권한 변경 감지 준비 완료");
 }
 
 function onUpdateJournal(doc, changes, options, userId) {
   if (userId !== game.user.id) return;
-  const before = beforeVisibility.get(doc.uuid);
-  if (!before) return;
+  const saved = beforeVisibility.get(doc.uuid);
+  if (!saved) return;
+  // 먼저 온 경로가 처리하고 지운다. 두 번째 경로는 여기서 멈춘다(중복 기록 없음).
   beforeVisibility.delete(doc.uuid);
+  const before = saved.map;
 
   safely("저널 권한", () => {
     const isPage = doc.documentName === "JournalEntryPage";
@@ -192,14 +230,24 @@ function onUpdateJournal(doc, changes, options, userId) {
         }
       }
     }
-    if (!newPageIds.size) return;
+    if (!newPageIds.size) {
+      // 진단용: 무엇을 비교했는지 콘솔에 남긴다(플레이어 화면과 무관, GM 콘솔에만)
+      const fmt = m => [...m].map(([id, s]) => `${entry.pages.get(id)?.name ?? id}:[${[...s].map(u => game.users.get(u)?.name).join(",")}]`).join(" ");
+      console.info(`gm-session-log | 권한 변경 감지(저장 후): ${doc.name} — 새로 볼 수 있게 된 플레이어 없음. 전: ${fmt(before)} / 후: ${fmt(after)}`);
+      return;
+    }
 
     const players = playerUsers();
     const allNow = players.length > 0 && players.every(u => newUserIds.has(u.id));
     const targets = allNow ? ALL : describeTargets([...newUserIds]);
     const snap = snapshotJournal(entry, targetUsers(targets), { onlyPageIds: newPageIds });
-    const title = isPage ? `${entry.name} / ${doc.name}` : entry.name;
-    return postGmLog(`저널 권한 공개 → ${targetLabel(targets)}: ${title}`, {
+    const title = isPage ? journalTitle(entry.name, doc.name) : entry.name;
+    // 누구에게 어떤 권한이 생겼는지 보이게: "저널 권한 공개(관찰자) → 전체(캐릭터): 제목"
+    const who = allNow
+      ? `전체(${players.map(u => displayName(u)).join(", ")})`
+      : targetLabel(targets);
+    const level = levelLabel(doc, [...newUserIds]);
+    return postGmLog(`저널 권한 공개(${level}) → ${who}: ${title}`, {
       kind: "event",
       type: "journal-perm",
       title,

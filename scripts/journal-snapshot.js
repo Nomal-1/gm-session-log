@@ -32,6 +32,17 @@ export function stripUnrevealedSecrets(html) {
 }
 
 /**
+ * 실제 권한 단계(0 없음, 1 제한, 2 관찰자, 3 소유자). "상위 따름"(-1)이면 상위 저널을 따라간다.
+ */
+export function effectiveLevel(doc, user) {
+  const INHERIT = CONST.DOCUMENT_OWNERSHIP_LEVELS.INHERIT ?? -1;
+  const own = doc.ownership ?? {};
+  const level = own[user.id] ?? own.default ?? 0;
+  if (level === INHERIT && doc.parent) return effectiveLevel(doc.parent, user);
+  return level;
+}
+
+/**
  * 이 사용자가 문서를 볼 수 있는가.
  * 페이지 권한이 "상위 저널 권한 따름"(INHERIT, -1)이면 저널 권한으로 판단한다.
  */
