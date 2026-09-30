@@ -6,7 +6,7 @@
 import {
   moduleFlags, kstTime, kstDate, kstWeekday, formatDuration, formatDurationKo, htmlToText
 } from "../common.js";
-import { parseDwCard, describeDwCard, describeRolls } from "./dw-roll.js";
+import { parseDwCard, describeDwCard, describeRolls, parseDiceHtml } from "./dw-roll.js";
 
 function authorOf(m) {
   return m.author ?? m.user ?? null;
@@ -38,9 +38,10 @@ export function buildRecords(messages, session, assetByMessageId) {
     let dw = null;
     let link = null;
 
+    let htmlDice;
     if (f?.kind === "marker") {
       kind = f.action === "start" ? "기록 시작" : "기록 종료";
-      text = f.label;
+      text = f.name;
     } else if (f?.kind === "event") {
       kind = "화면 사건";
       text = f.label;
@@ -53,6 +54,11 @@ export function buildRecords(messages, session, assetByMessageId) {
     } else if (m.rolls?.length) {
       kind = "다이스";
       const rolls = describeRolls(m.rolls);
+      const flavor = htmlToText(m.flavor);
+      text = flavor ? `${flavor}: ${rolls}` : rolls;
+    } else if ((htmlDice = parseDiceHtml(m.content)).length) {
+      kind = "다이스";
+      const rolls = describeRolls(htmlDice);
       const flavor = htmlToText(m.flavor);
       text = flavor ? `${flavor}: ${rolls}` : rolls;
     } else {

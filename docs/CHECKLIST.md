@@ -11,11 +11,11 @@
 
 ## 1. 화면 사건 기록
 - [x] 장면 전환 (`updateScene`, active=true, 일으킨 GM만) — 근거: `scripts/event-log.js` `onUpdateScene()`
-- [x] 이미지 보여주기 (`ImagePopout.prototype.shareImage` 감싸기, 원래 동작 보장) — 근거: `event-log.js` `wrapShareImage()`. 원래 함수를 먼저 실행하고, 기록은 `safely()` 안에서 해서 오류가 나도 원래 동작에 영향 없음 [FVTT 시험 필요: 액터 초상화 경유 여부]
-- [x] 저널 보여주기 (`Journal.show` 감싸기, 페이지/전체 구분, 대상 반영) — 근거: `event-log.js` `wrapJournalShow()` + `scripts/journal-snapshot.js` `snapshotJournal()` [FVTT 시험 필요: showDialog 경유, force]
-- [x] 저널 권한 변경 (pre/update 비교, 새로 볼 수 있게 된 플레이어만) — 근거: `event-log.js` `onPreUpdateJournal()`·`onUpdateJournal()`, `journal-snapshot.js` `pageVisibilityMap()`
+- [x] 이미지 보여주기 (`ImagePopout.prototype.shareImage` 감싸기, 원래 동작 보장) — 근거: `event-log.js` `wrapShareImage()`, 클래스 찾기 `imagePopoutClass()`(v0.1.1: 전역 식별자 우선). 원래 함수를 먼저 실행하고, 기록은 `safely()` 안에서 해서 오류가 나도 원래 동작에 영향 없음 [FVTT 시험 필요: 액터 초상화 경유 여부]
+- [x] 저널 보여주기 (`Journal.show` 감싸기, 페이지/전체 구분, 대상 반영) — 근거: `event-log.js` `wrapJournalShow()`·`journalClass()`(v0.1.1) + `scripts/journal-snapshot.js` `snapshotJournal()` [FVTT 시험 필요: showDialog 경유, force]
+- [x] 저널 권한 변경 (저장 전/후 비교, 새로 볼 수 있게 된 플레이어만) — 근거: `event-log.js` `wrapJournalOwnership()`(v0.1.1: Hook 대신 문서 클래스 `_preUpdate`/`_onUpdate` 감싸기)·`beforeOwnershipChange()`·`onUpdateJournal()`, `journal-snapshot.js` `pageVisibilityMap()`·`canObserve()`(상위 따름 권한 처리) [로컬 시험 v0.1.1]
 - [x] NPC 토큰 (생성 시 보임 / 숨김→보임, npc 액터만) — 근거: `event-log.js` `onCreateToken()`·`onUpdateToken()`·`logToken()`(`actor.type === "npc"`, 활성 장면만)
-- [x] 저널 공개분 추리기: 공개 안 된 비밀 블록 삭제·개수, 권한 없는 페이지 제외 — 근거: `journal-snapshot.js` `stripUnrevealedSecrets()`, `snapshotJournal()`의 `canAnyObserve()` 검사 [로컬 시험: 숨김 2개 제거·공개 1개 유지·중첩 비밀 제거]
+- [x] 저널 공개분 추리기: 공개 안 된 비밀 블록 삭제·개수, 권한 변경 기록에서만 권한 없는 페이지 제외 — 근거: `journal-snapshot.js` `stripUnrevealedSecrets()`, `snapshotJournal()`의 `filterByPermission`(Show Players는 false — v0.1.0 테스트 결과) [로컬 시험: 숨김 2개 제거·공개 1개 유지·중첩 비밀 제거]
 - [x] "기록 중일 때만" 설정·사건별 켜기/끄기 반영 — 근거: `event-log.js` `shouldLog()`
 - [x] 꼬리표(flags)에 uuid·이미지·대상·저널 공개분 저장 — 근거: 각 `postGmLog(..., {kind, type, title, uuid, img, targets, journal})` 호출, `common.js` `postGmLog()`가 `flags["gm-session-log"]`에 저장
 
@@ -31,7 +31,7 @@
 - [x] 진행 표시 창 — 근거: `export.js` `ProgressBox` (GM 브라우저의 화면에만 붙는 요소)
 - [x] 세션기록.md 머리말 (이름, 날짜, 시각, 길이, 참가자, 줄 수) — 근거: `scripts/export/chat-format.js` `renderSessionMd()`, `participants()`
 - [x] 메시지 줄 (시각, 경과, 누가, 종류, 귓속말 대상, 순수 텍스트) — 근거: `chat-format.js` `buildRecords()`, `whoOf()`, `common.js` `htmlToText()` [로컬 시험: HTML 벗기기]
-- [x] 던전월드 판정 읽기 (무브 이름, 식, 합계, 10+/7-9/6-) + 일반 굴림 — 근거: `scripts/export/dw-roll.js` `parseDwCard()`·`describeDwCard()`·`describeRolls()` [로컬 시험: 성공/부분/실패/피해/굴림 없는 무브/일반·유리 굴림]
+- [x] 던전월드 판정 읽기 (무브 이름, 식, 합계, 10+/7-9/6-) + 일반 굴림 — 근거: `scripts/export/dw-roll.js` `parseDwCard()`·`describeDwCard()`·`describeRolls()`, 본문에만 있는 주사위 `parseDiceHtml()`(v0.1.1) [FVTT 시험 v0.1.0: 7회 판정 구간 모두 정확] [로컬 시험: 성공/부분/실패/피해/굴림 없는 무브/일반·유리 굴림]
 - [x] 화면 사건 줄에 자료 링크 — 근거: `chat-format.js` `buildRecords()`의 `link`
 - [x] 자료 수집: 장면 배경 / 이미지 / 토큰+초상화 / 저널 .md+그림 — 근거: `scripts/export/assets.js` `collectAssets()`, `buildJournalMd()`
 - [x] 중복 제거와 보여준 시각 모으기 — 근거: `assets.js` `planAssets()`의 `assetKey()`(이미지 경로 또는 저널 공개분 내용 기준)

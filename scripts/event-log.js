@@ -47,12 +47,24 @@ function onUpdateScene(scene, changes, options, userId) {
 
 /* ---------------- 이미지 보여주기 ---------------- */
 
+// v12의 foundry.js는 클래스를 "전역 식별자"로 선언해서 window.ImagePopout으로는 안 보일 수 있다.
+// 그래서 식별자 이름으로 먼저 찾고, 없으면 window(globalThis)에서 찾는다. (v0.1.0 테스트에서 감지 실패 → 수정)
+function imagePopoutClass() {
+  // eslint-disable-next-line no-undef
+  return typeof ImagePopout !== "undefined" ? ImagePopout : globalThis.ImagePopout;
+}
+function journalClass() {
+  // eslint-disable-next-line no-undef
+  return typeof Journal !== "undefined" ? Journal : globalThis.Journal;
+}
+
 function wrapShareImage() {
-  const cls = globalThis.ImagePopout;
+  const cls = imagePopoutClass();
   if (!cls?.prototype?.shareImage) {
     console.warn("gm-session-log | ImagePopout.shareImage를 찾지 못해 이미지 공개 기록을 건너뜁니다.");
     return;
   }
+  console.info("gm-session-log | 이미지 공개 감지 준비 완료");
   const original = cls.prototype.shareImage;
   cls.prototype.shareImage = function (options = {}) {
     const result = original.call(this, options);
@@ -78,18 +90,21 @@ function wrapShareImage() {
 /* ---------------- 저널 보여주기 ---------------- */
 
 function wrapJournalShow() {
-  const cls = globalThis.Journal;
+  const cls = journalClass();
   if (typeof cls?.show !== "function") {
     console.warn("gm-session-log | Journal.show를 찾지 못해 저널 공개 기록을 건너뜁니다.");
     return;
   }
+  console.info("gm-session-log | 저널 공개 감지 준비 완료");
   const original = cls.show;
   cls.show = async function (doc, options = {}) {
     const result = await original.call(this, doc, options);
     safely("저널 공개", () => {
       if (!shouldLog("logJournalShow") || !doc?.documentName) return;
       const targets = describeTargets(options.users);
-      const snap = snapshotJournal(doc, targetUsers(targets));
+      // v0.1.0 테스트: Show Players는 권한이 없어도(강제 옵션 없이도) 플레이어에게 보여준다.
+      // 그래서 권한으로 페이지를 거르지 않는다. 공개 안 된 비밀 블록은 여전히 뺀다.
+      const snap = snapshotJournal(doc, targetUsers(targets), { filterByPermission: false });
       const title = snap.pageName ? `${snap.entryName} / ${snap.pageName}` : snap.entryName;
       return postGmLog(`저널 공유 → ${targetLabel(targets)}: ${title}`, {
         kind: "event",
@@ -115,13 +130,43 @@ function touchesOwnership(changes) {
   return Object.keys(changes ?? {}).some(k => k === "ownership" || k.startsWith("ownership."));
 }
 
-// 주의: pre... Hook에서 false를 돌려주면 변경이 취소된다. 이 함수는 항상 아무것도 돌려주지 않는다.
-function onPreUpdateJournal(doc, changes, options, userId) {
+function beforeOwnershipChange(doc, changes, userId) {
   if (userId !== game.user.id || !touchesOwnership(changes)) return;
   if (!shouldLog("logJournalPerm")) return;
   const entry = doc.documentName === "JournalEntryPage" ? doc.parent : doc;
   if (!entry) return;
   beforeVisibility.set(doc.uuid, pageVisibilityMap(entry, playerUsers()));
+}
+
+/**
+ * 권한 설정 창은 저장할 때 Hook을 부르지 않는 옵션(noHook)을 쓸 수 있어서, Hook 대신
+ * 저널 문서 클래스의 저장 전(_preUpdate)·저장 후(_onUpdate) 단계를 감싼다. (v0.1.0 테스트에서 감지 실패 → 수정)
+ * - 원래 함수를 같은 인자로 그대로 부르고, 그 결과를 그대로 돌려준다(저장을 막거나 바꾸지 않음).
+ */
+function wrapJournalOwnership() {
+  for (const name of ["JournalEntry", "JournalEntryPage"]) {
+    const cls = CONFIG[name]?.documentClass;
+    if (!cls?.prototype?._preUpdate || !cls.prototype._onUpdate) {
+      console.warn(`gm-session-log | ${name} 저장 단계를 찾지 못해 권한 변경 기록을 건너뜁니다.`);
+      continue;
+    }
+    const pre = cls.prototype._preUpdate;
+    cls.prototype._preUpdate = function (changed, options, user) {
+      try {
+        beforeOwnershipChange(this, changed, user?.id ?? user);
+      } catch (err) {
+        console.error("gm-session-log | 권한 변경 준비 실패", err);
+      }
+      return pre.call(this, changed, options, user);
+    };
+    const on = cls.prototype._onUpdate;
+    cls.prototype._onUpdate = function (changed, options, userId) {
+      const result = on.call(this, changed, options, userId);
+      onUpdateJournal(this, changed, options, userId);
+      return result;
+    };
+  }
+  console.info("gm-session-log | 저널 권한 변경 감지 준비 완료");
 }
 
 function onUpdateJournal(doc, changes, options, userId) {
@@ -203,12 +248,9 @@ function onUpdateToken(tokenDoc, changes, options, userId) {
 /** ready 시점에 GM 화면에서만 호출된다. */
 export function initEventLog() {
   Hooks.on("updateScene", onUpdateScene);
-  Hooks.on("preUpdateJournalEntry", onPreUpdateJournal);
-  Hooks.on("preUpdateJournalEntryPage", onPreUpdateJournal);
-  Hooks.on("updateJournalEntry", onUpdateJournal);
-  Hooks.on("updateJournalEntryPage", onUpdateJournal);
   Hooks.on("createToken", onCreateToken);
   Hooks.on("updateToken", onUpdateToken);
   wrapShareImage();
   wrapJournalShow();
+  wrapJournalOwnership();
 }

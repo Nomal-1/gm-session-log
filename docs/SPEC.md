@@ -16,7 +16,7 @@
 | 장면 전환 | `updateScene` Hook에서 `changes.active === true` | ✅ API 문서 hookEvents(updateDocument), BaseScene `active` 필드 |
 | 이미지 보여주기 | `ImagePopout.prototype.shareImage`를 감싸서, 원래 함수를 실행한 **뒤** 기록 | ✅ 문서: 이 동작에는 Hook이 없음, `ShareImageConfig`에 `image/title/uuid/users` 있음 · 🧪 액터 초상화의 Show Players도 이 함수를 거치는지 |
 | 저널 보여주기 | `Journal.show`(정적 함수)를 감싸서 기록. `showDialog`도 결국 이 함수를 부른다고 보고 테스트로 확인 | ✅ 문서: `show(doc, {force, users})`, doc은 JournalEntry 또는 JournalEntryPage · 🧪 showDialog → show 경유 여부 |
-| 저널 권한 변경 | `preUpdateJournalEntry`/`preUpdateJournalEntryPage`에서 "누가 볼 수 있었나"를 저장해 두고, `update...` Hook에서 **새로 볼 수 있게 된 플레이어**만 기록 | ✅ 문서: `testUserPermission(user, "OBSERVER")` |
+| 저널 권한 변경 | 권한 설정 창은 Hook 없이 저장할 수 있어서(v0.1.0 테스트에서 Hook으로 감지 실패), 저널 문서 클래스의 저장 전(`_preUpdate`)·후(`_onUpdate`)를 감싸 "누가 볼 수 있었나"를 비교하고 **새로 볼 수 있게 된 플레이어**만 기록. 페이지 권한이 "상위 따름(-1)"이면 저널 권한으로 판단 | ✅ 문서: `testUserPermission(user, "OBSERVER")` |
 | NPC 토큰 | `createToken`(숨김 아님) + `updateToken`에서 `changes.hidden === false`. 액터 종류가 `npc`인 토큰만 | ✅ hookEvents · 시스템 `template.json` 액터 종류 `character`/`npc` |
 
 공통 규칙
@@ -58,7 +58,7 @@
   - 이렇게 해 두면 세션 후 GM이 저널을 고치거나 공개 상태를 바꿔도 추출 결과는 실제로 보여준 모습 그대로다. 공개하지 않은 내용은 애초에 꼬리표에 들어가지 않는다.
 - 어떤 페이지를 담는가
   - 페이지 하나를 보여줌: 그 페이지만.
-  - 저널 전체를 보여줌: 대상 플레이어 중 한 명이라도 `OBSERVER` 이상 권한이 있는 페이지만. 🧪 "강제로 보여주기(force)"일 때 권한 없는 페이지도 보이는지는 테스트로 확인한다. 그 전까지는 권한 없는 페이지를 넣지 않는 안전한 쪽을 따른다.
+  - 저널 전체를 보여줌: **모든 페이지**. v0.1.0 테스트에서 "Show Players"는 권한이 없어도, 강제 옵션 없이도 플레이어에게 보여준다는 것을 확인했다. 공개 안 된 비밀 블록은 여전히 뺀다.
   - 권한 변경: 새로 볼 수 있게 된 페이지만.
 
 ### 1-3. 사건별 문구

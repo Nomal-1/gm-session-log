@@ -57,7 +57,24 @@ export function describeRolls(rolls) {
   return rolls.map(r => {
     const formula = r.formula ?? "";
     const total = r.total;
-    const band = /2d6|3d6k[hl]2/i.test(formula) ? bandFromTotal(total) : null;
+    const band = /2d6|3d6k[hl]2/i.test(formula.replace(/\s+/g, "")) ? bandFromTotal(total) : null;
     return band ? `${formula} = ${total} → ${band}` : `${formula} = ${total}`;
   }).join(" / ");
+}
+
+/**
+ * 본문 HTML에 그려진 Foundry 주사위 결과(.dice-roll 안의 .dice-formula, .dice-total)를 읽는다.
+ * message.rolls가 비어 있는데 본문에 주사위 결과가 있는 경우에 쓴다. (v0.1.0 테스트: /r 굴림이 "채팅"으로 분류됨)
+ * @returns {{formula: string, total: string}[]}
+ */
+export function parseDiceHtml(html) {
+  if (!html || !html.includes("dice-")) return [];
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const out = [];
+  for (const roll of doc.querySelectorAll(".dice-roll")) {
+    const formula = roll.querySelector(".dice-formula")?.textContent?.trim();
+    const total = roll.querySelector(".dice-total")?.textContent?.trim();
+    if (formula && total) out.push({ formula, total });
+  }
+  return out;
 }

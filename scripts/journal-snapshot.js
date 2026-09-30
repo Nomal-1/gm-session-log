@@ -4,7 +4,8 @@
  * - 공개(revealed) 처리된 비밀 블록: 남긴다.
  * - 공개되지 않은 비밀 블록: 여기서 지우고 개수만 센다.
  *   (Foundry v12 문서 EnrichmentOptions.secrets: "unrevealed secret blocks will be removed")
- * - 대상 플레이어 중 아무도 OBSERVER 권한이 없는 페이지: 넣지 않고 개수만 센다.
+ * - 권한 변경 기록일 때만: 대상 플레이어 중 아무도 OBSERVER 권한이 없는 페이지는 넣지 않고 개수만 센다.
+ *   ("Show Players"는 권한과 관계없이 보여주므로 거르지 않는다 — v0.1.0 테스트 결과)
  *
  * 결과는 GM 귓속말의 flags에 저장되므로, 공개되지 않은 내용은 애초에 저장되지 않는다.
  * 원본 저널은 읽기만 한다.
@@ -30,16 +31,28 @@ export function stripUnrevealedSecrets(html) {
   return { html: doc.body.innerHTML, hidden, revealed };
 }
 
+/**
+ * 이 사용자가 문서를 볼 수 있는가.
+ * 페이지 권한이 "상위 저널 권한 따름"(INHERIT, -1)이면 저널 권한으로 판단한다.
+ */
+export function canObserve(doc, user) {
+  try {
+    const INHERIT = CONST.DOCUMENT_OWNERSHIP_LEVELS.INHERIT ?? -1;
+    const own = doc.ownership ?? {};
+    const level = own[user.id] ?? own.default;
+    if (doc.documentName === "JournalEntryPage" && level === INHERIT && doc.parent) {
+      return doc.parent.testUserPermission(user, OBSERVER);
+    }
+    return doc.testUserPermission(user, OBSERVER);
+  } catch (err) {
+    console.warn("gm-session-log | 권한 확인 실패", err);
+    return false;
+  }
+}
+
 /** 대상 플레이어 중 한 명이라도 볼 수 있는가 */
 export function canAnyObserve(doc, users) {
-  return users.some(u => {
-    try {
-      return doc.testUserPermission(u, OBSERVER);
-    } catch (err) {
-      console.warn("gm-session-log | 권한 확인 실패", err);
-      return false;
-    }
-  });
+  return users.some(u => canObserve(doc, u));
 }
 
 /** 페이지 하나를 저장용 데이터로 */
@@ -59,8 +72,10 @@ function pageData(page) {
  * @param {User[]} users                        공개 대상 플레이어
  * @param {object} [opts]
  * @param {Set<string>} [opts.onlyPageIds]       이 페이지들만 대상(권한 변경 시)
+ * @param {boolean} [opts.filterByPermission]    권한 없는 페이지를 뺄지. "Show Players"는 권한과 무관하게
+ *                                               보여주므로 false, 권한 변경 기록은 true.
  */
-export function snapshotJournal(doc, users, { onlyPageIds } = {}) {
+export function snapshotJournal(doc, users, { onlyPageIds, filterByPermission = true } = {}) {
   const isPage = doc.documentName === "JournalEntryPage";
   const entry = isPage ? doc.parent : doc;
   let candidates = isPage ? [doc] : entry.pages.contents.slice().sort((a, b) => a.sort - b.sort);
@@ -69,9 +84,7 @@ export function snapshotJournal(doc, users, { onlyPageIds } = {}) {
   const pages = [];
   let pagesExcluded = 0;
   for (const page of candidates) {
-    // 🧪 강제로 보여주기(force)일 때 권한 없는 페이지도 보이는지는 확인 전이다.
-    //    확인 전까지는 권한이 있는 페이지만 넣는다.
-    if (!canAnyObserve(page, users)) {
+    if (filterByPermission && !canAnyObserve(page, users)) {
       pagesExcluded++;
       continue;
     }
@@ -93,11 +106,7 @@ export function pageVisibilityMap(entry, users) {
   const map = new Map();
   for (const page of entry.pages) {
     const set = new Set();
-    for (const u of users) {
-      try {
-        if (page.testUserPermission(u, OBSERVER)) set.add(u.id);
-      } catch { /* 무시 */ }
-    }
+    for (const u of users) if (canObserve(page, u)) set.add(u.id);
     map.set(page.id, set);
   }
   return map;
