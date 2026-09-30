@@ -1,0 +1,76 @@
+/* 채팅 탭 상단 막대 (GM 화면에만 생김) */
+.gsl-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 3px 4px;
+  margin: 0 0 3px;
+  border: 1px solid var(--color-border-light-tertiary, #7a7971);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+}
+.gsl-bar button {
+  flex: 0 0 auto;
+  width: auto;
+  height: 24px;
+  line-height: 20px;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.gsl-bar .gsl-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  opacity: 0.8;
+}
+.gsl-bar.recording {
+  background: #a3261f;
+  border-color: #ff6b5e;
+  color: #fff;
+  box-shadow: 0 0 6px rgba(255, 80, 60, 0.7);
+}
+.gsl-bar.recording .gsl-status {
+  opacity: 1;
+  font-weight: bold;
+}
+.gsl-bar.recording button[data-gsl="stop"] {
+  background: #fff;
+  color: #a3261f;
+  font-weight: bold;
+}
+
+/* GM 귓속말 기록 줄 */
+.gsl-log {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* 추출 진행 표시 */
+.gsl-progress {
+  position: fixed;
+  right: 320px;
+  bottom: 16px;
+  z-index: 10000;
+  width: 320px;
+  padding: 10px 12px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: rgba(20, 20, 20, 0.92);
+  color: #eee;
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.gsl-progress-title { font-weight: bold; margin-bottom: 4px; }
+.gsl-progress-text { margin-bottom: 6px; word-break: break-all; }
+.gsl-progress-track { height: 6px; background: #444; border-radius: 3px; overflow: hidden; }
+.gsl-progress-fill { height: 100%; width: 0; background: #d9534f; transition: width 0.2s; }
+.gsl-progress.done .gsl-progress-fill { background: #4caf50; }
+.gsl-progress.error { border-color: #d9534f; }
+.gsl-progress button { margin-top: 8px; width: 100%; }
