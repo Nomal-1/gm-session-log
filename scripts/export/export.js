@@ -13,7 +13,15 @@ let busy = false;
 
 /* ---------------- 범위 ---------------- */
 
-/** 기록 시작/종료 표시를 sessionId로 짝지은 목록 (최신 먼저) */
+/**
+ * 기록 시작/종료 표시를 sessionId로 짝지은 목록 (최신 먼저).
+ * 기록은 채팅 메시지 안에만 있으므로, 채팅을 지우면 그 구간은 찾을 수 없다.
+ * - 시작 표시가 없는 구간은 빠진다(시작이 기준).
+ * - 종료 표시가 없는 구간:
+ *   · 지금 기록 중인 세션이면 "진행 중" → 지금까지
+ *   · 아니면 "종료 표시 없음" → 다음 세션의 기록 시작 직전까지(없으면 지금까지).
+ *     종료 줄만 지워졌을 때 다음 세션 채팅까지 섞이지 않게 하기 위함.
+ */
 export function findSessions() {
   const map = new Map();
   const sorted = game.messages.contents.slice().sort((a, b) => a.timestamp - b.timestamp);
@@ -25,12 +33,24 @@ export function findSessions() {
     if (f.action === "start" && !s.start) s.start = m;
     if (f.action === "end" && !s.end) s.end = m;
   }
-  return [...map.values()].filter(s => s.start).sort((a, b) => b.start.timestamp - a.start.timestamp);
+  const state = getSetting("recordingState") ?? {};
+  const list = [...map.values()].filter(s => s.start).sort((a, b) => a.start.timestamp - b.start.timestamp);
+  list.forEach((s, i) => {
+    s.inProgress = !s.end && !!state.active && state.sessionId === s.sessionId;
+    const next = list[i + 1];
+    s.endMissing = !s.end && !s.inProgress;
+    // 끝 시각: 종료 표시 → (진행 중이면 지금) → 다음 기록 시작 직전 → 지금(null)
+    s.rangeEnd = s.end?.timestamp ?? (s.inProgress || !next ? null : next.start.timestamp - 1);
+  });
+  return list.reverse();
 }
 
 function sessionLabel(s) {
   const d = kstDate(s.start.timestamp).slice(5).replace("-", "/");
-  const end = s.end ? kstTime(s.end.timestamp).slice(0, 5) : "진행 중";
+  let end;
+  if (s.end) end = kstTime(s.end.timestamp).slice(0, 5);
+  else if (s.inProgress) end = "진행 중";
+  else end = "종료 표시 없음";
   return `${s.name} · ${d} ${kstTime(s.start.timestamp).slice(0, 5)}~${end}`;
 }
 
@@ -97,8 +117,10 @@ export async function runExport({ sessionId } = {}) {
 
   const sessions = findSessions();
   if (!sessions.length) return ui.notifications.warn(game.i18n.localize("GSL.Notify.noSession"));
+  // 기록 종료 직후 "예"는 방금 끝낸 세션을 바로 추출한다.
+  // 추출 버튼·/기록추출은 구간이 1개여도 항상 목록을 보여 준다(무엇을 추출하는지 보이게).
   let session = sessionId ? sessions.find(s => s.sessionId === sessionId) : null;
-  if (!session) session = sessions.length === 1 ? sessions[0] : await pickSession(sessions);
+  if (!session) session = await pickSession(sessions);
   if (!session) return;
 
   busy = true;
@@ -106,7 +128,7 @@ export async function runExport({ sessionId } = {}) {
   try {
     const exportedAt = Date.now();
     const startTs = session.start.timestamp;
-    const endTs = session.end?.timestamp ?? exportedAt;
+    const endTs = session.rangeEnd ?? exportedAt;
     const messages = game.messages.contents
       .filter(m => m.timestamp >= startTs && m.timestamp <= endTs)
       .sort((a, b) => a.timestamp - b.timestamp);

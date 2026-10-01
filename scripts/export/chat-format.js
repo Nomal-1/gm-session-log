@@ -105,9 +105,16 @@ function participants(messages) {
 export function renderSessionMd(session, messages, records, exportedAt) {
   const start = session.start.timestamp;
   const end = session.end?.timestamp ?? null;
-  const endText = end
-    ? `${kstTime(end)} (${formatDurationKo(end - start)})`
-    : `추출 시점 ${kstTime(exportedAt)}까지 (${formatDurationKo(exportedAt - start)}, 종료 표시 없음)`;
+  let endText;
+  if (end) {
+    endText = `${kstTime(end)} (${formatDurationKo(end - start)})`;
+  } else if (session.inProgress) {
+    endText = `추출 시점 ${kstTime(exportedAt)}까지 (${formatDurationKo(exportedAt - start)}, 아직 기록 중)`;
+  } else if (session.rangeEnd) {
+    endText = `${kstTime(session.rangeEnd)}까지 (${formatDurationKo(session.rangeEnd - start)}, 종료 표시 없음 — 다음 기록 시작 직전까지 담음)`;
+  } else {
+    endText = `추출 시점 ${kstTime(exportedAt)}까지 (${formatDurationKo(exportedAt - start)}, 종료 표시 없음)`;
+  }
 
   const lines = [
     `# 세션 기록: ${session.name}`,
