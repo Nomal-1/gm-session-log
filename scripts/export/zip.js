@@ -111,9 +111,9 @@ export function downloadBlob(blob, filename) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  // 링크를 화면(문서)에 붙이지 않고 클릭 신호만 보낸다. Foundry의 saveDataToFile과 같은 방식.
+  // v0.1.2까지는 문서에 붙였다가 눌렀는데, 받은 파일 이름이 무작위(UUID)로 바뀌었다.
+  // 문서에 붙은 링크 클릭을 화면 쪽 처리기가 가로채 이름 없이 연 것으로 보고 고친다.
+  a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
