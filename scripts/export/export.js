@@ -57,24 +57,23 @@ function sessionLabel(s) {
 function pickSession(sessions) {
   const options = sessions.map((s, i) =>
     `<option value="${i}"${i === 0 ? " selected" : ""}>${escapeHtml(sessionLabel(s))}</option>`).join("");
-  return new Promise(resolve => {
-    new Dialog({
-      title: game.i18n.localize("GSL.Dialog.pickTitle"),
-      content: `<form class="gsl-dialog"><div class="form-group">
-          <label>${game.i18n.localize("GSL.Dialog.pickLabel")}</label>
-          <select name="session">${options}</select></div></form>`,
-      buttons: {
-        ok: {
-          icon: '<i class="fas fa-file-archive"></i>',
-          label: game.i18n.localize("GSL.Dialog.pickButton"),
-          callback: html => resolve(sessions[Number(html.find("select[name=session]").val())] ?? null)
-        },
-        cancel: { label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => resolve(null) }
+  return foundry.applications.api.DialogV2.wait({
+    window: { title: game.i18n.localize("GSL.Dialog.pickTitle") },
+    content: `<div class="gsl-dialog"><div class="form-group">
+        <label>${game.i18n.localize("GSL.Dialog.pickLabel")}</label>
+        <select name="session">${options}</select></div></div>`,
+    buttons: [
+      {
+        action: "ok",
+        icon: "fas fa-file-archive",
+        label: game.i18n.localize("GSL.Dialog.pickButton"),
+        default: true,
+        callback: (_event, button) => sessions[Number(button.form.elements.session?.value)] ?? null
       },
-      default: "ok",
-      close: () => resolve(null)
-    }).render(true);
-  });
+      { action: "cancel", label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => null }
+    ],
+    rejectClose: false
+  }).then(r => r ?? null);
 }
 
 /* ---------------- 진행 표시 (GM 화면에만 생김) ---------------- */

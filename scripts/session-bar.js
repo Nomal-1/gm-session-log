@@ -22,25 +22,26 @@ export function setExportHandler(fn) {
 
 async function askSessionName() {
   const def = kstDate(Date.now());
-  return new Promise(resolve => {
-    new Dialog({
-      title: game.i18n.localize("GSL.Dialog.startTitle"),
-      content: `<form class="gsl-dialog"><div class="form-group">
-          <label>${game.i18n.localize("GSL.Dialog.startLabel")}</label>
-          <input type="text" name="name" placeholder="${escapeHtml(def)}" autofocus>
-        </div></form>`,
-      buttons: {
-        ok: {
-          icon: '<i class="fas fa-circle"></i>',
-          label: game.i18n.localize("GSL.Dialog.startButton"),
-          callback: html => resolve(String(html.find("input[name=name]").val() ?? "").trim() || def)
-        },
-        cancel: { label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => resolve(null) }
+  // DialogV2가 내용을 <form>으로 감싸므로 안에는 form을 다시 쓰지 않는다
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { title: game.i18n.localize("GSL.Dialog.startTitle") },
+    content: `<div class="gsl-dialog"><div class="form-group">
+        <label>${game.i18n.localize("GSL.Dialog.startLabel")}</label>
+        <input type="text" name="name" placeholder="${escapeHtml(def)}" autofocus>
+      </div></div>`,
+    buttons: [
+      {
+        action: "ok",
+        icon: "fas fa-circle",
+        label: game.i18n.localize("GSL.Dialog.startButton"),
+        default: true,
+        callback: (_event, button) => String(button.form.elements.name?.value ?? "").trim() || def
       },
-      default: "ok",
-      close: () => resolve(null)
-    }).render(true);
+      { action: "cancel", label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => null }
+    ],
+    rejectClose: false
   });
+  return result ?? null;
 }
 
 // 버튼을 빠르게 두 번 눌러 시작·종료가 두 번 기록되는 것을 막는다.
@@ -77,10 +78,11 @@ export async function stopRecording() {
     pending = false;
   }
 
-  const yes = await Dialog.confirm({
-    title: game.i18n.localize("GSL.Dialog.exportNowTitle"),
+  const yes = await foundry.applications.api.DialogV2.confirm({
+    window: { title: game.i18n.localize("GSL.Dialog.exportNowTitle") },
     content: `<p>${game.i18n.localize("GSL.Dialog.exportNowContent")}</p>`,
-    defaultYes: true
+    yes: { default: true },
+    rejectClose: false
   });
   if (yes) exportFn?.({ sessionId: state.sessionId });
 }
@@ -131,7 +133,7 @@ function onBarClick(event) {
   else if (action === "export") exportFn?.();
 }
 
-/** renderChatLog Hook. v12 ChatLog는 Application(v1)이라 html은 jQuery 객체다. */
+/** renderChatLog Hook. v13+ ChatLog는 ApplicationV2라 html은 HTMLElement이고, 일부만 다시 그려도 불린다(중복은 막는다). */
 export function injectBar(app, html) {
   if (!game.user?.isGM || !isEnabled()) return;
   const root = html?.[0] ?? html;

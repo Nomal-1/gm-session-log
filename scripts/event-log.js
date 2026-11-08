@@ -52,15 +52,12 @@ function onUpdateScene(scene, changes, options, userId) {
 
 /* ---------------- 이미지 보여주기 ---------------- */
 
-// v12의 foundry.js는 클래스를 "전역 식별자"로 선언해서 window.ImagePopout으로는 안 보일 수 있다.
-// 그래서 식별자 이름으로 먼저 찾고, 없으면 window(globalThis)에서 찾는다. (v0.1.0 테스트에서 감지 실패 → 수정)
+// v13+에서는 네임스페이스 아래에 있다(전역 ImagePopout·Journal은 deprecated).
 function imagePopoutClass() {
-  // eslint-disable-next-line no-undef
-  return typeof ImagePopout !== "undefined" ? ImagePopout : globalThis.ImagePopout;
+  return foundry.applications.apps.ImagePopout;
 }
 function journalClass() {
-  // eslint-disable-next-line no-undef
-  return typeof Journal !== "undefined" ? Journal : globalThis.Journal;
+  return foundry.documents.collections.Journal;
 }
 
 function wrapShareImage() {
@@ -75,9 +72,10 @@ function wrapShareImage() {
     const result = original.call(this, options);
     safely("이미지 공개", () => {
       if (!shouldLog("logImage")) return;
-      const image = options.image ?? this.object ?? null;
+      // v13+ ImagePopout(ApplicationV2): 그림은 options.src, 제목은 options.window.title
+      const image = options.image ?? this.options?.src ?? null;
       if (!image) return;
-      const title = options.title || this.options?.title || this.title || String(image).split("/").pop();
+      const title = options.title || this.options?.window?.title || this.title || String(image).split("/").pop();
       const targets = describeTargets(options.users);
       return postGmLog(`이미지 공개 → ${targetLabel(targets)}: ${title}`, {
         kind: "event",
