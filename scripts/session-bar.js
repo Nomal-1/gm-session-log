@@ -22,7 +22,8 @@ export function setExportHandler(fn) {
 
 async function askSessionName() {
   const def = kstDate(Date.now());
-  // DialogV2가 내용을 <form>으로 감싸므로 안에는 form을 다시 쓰지 않는다
+  // DialogV2가 내용을 <form>으로 감싸므로 안에는 form을 다시 쓰지 않는다.
+  // 콜백이 null·undefined를 돌려주면 DialogV2는 버튼 이름("cancel")을 대신 돌려주므로, 취소는 false로 돌려준다.
   const result = await foundry.applications.api.DialogV2.wait({
     window: { title: game.i18n.localize("GSL.Dialog.startTitle") },
     content: `<div class="gsl-dialog"><div class="form-group">
@@ -37,11 +38,11 @@ async function askSessionName() {
         default: true,
         callback: (_event, button) => String(button.form.elements.name?.value ?? "").trim() || def
       },
-      { action: "cancel", label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => null }
+      { action: "cancel", label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => false }
     ],
     rejectClose: false
   });
-  return result ?? null;
+  return typeof result === "string" && result !== "cancel" ? result : null;
 }
 
 // 버튼을 빠르게 두 번 눌러 시작·종료가 두 번 기록되는 것을 막는다.

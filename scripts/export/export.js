@@ -68,12 +68,13 @@ function pickSession(sessions) {
         icon: "fas fa-file-archive",
         label: game.i18n.localize("GSL.Dialog.pickButton"),
         default: true,
-        callback: (_event, button) => sessions[Number(button.form.elements.session?.value)] ?? null
+        // null을 돌려주면 DialogV2가 버튼 이름("ok")을 대신 돌려주므로 false로
+        callback: (_event, button) => sessions[Number(button.form.elements.session?.value)] ?? false
       },
-      { action: "cancel", label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => null }
+      { action: "cancel", label: game.i18n.localize("GSL.Dialog.cancel"), callback: () => false }
     ],
     rejectClose: false
-  }).then(r => r ?? null);
+  }).then(r => (r && typeof r === "object" ? r : null));
 }
 
 /* ---------------- 진행 표시 (GM 화면에만 생김) ---------------- */

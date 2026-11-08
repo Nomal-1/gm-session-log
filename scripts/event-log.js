@@ -45,7 +45,8 @@ function onUpdateScene(scene, changes, options, userId) {
     type: "scene",
     title: scene.name,
     uuid: scene.uuid,
-    img: scene.background?.src ?? null,
+    // v14: 배경은 장면의 레벨(Level)에 있다(Scene#background는 deprecated)
+    img: (scene.initialLevel ?? scene.levels?.contents?.[0])?.background?.src ?? null,
     targets: ALL
   }));
 }
